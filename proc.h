@@ -34,6 +34,15 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+//priorities for custom multi-level priority scheduler with a roundrobin implementation
+#define MAX_PRIORITY 3
+#define HIGH_PRIORITY 0
+#define MED_PRIORITY 1
+#define LOW_PRIORITY 2
+
+#define NUM_PRIORITIES 3     //number of priority levels
+#define QUANTUM 5   //ticks per quantum
+
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -49,7 +58,14 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-};
+  uint ticks_ran;              // Number of ticks 
+  int predicted_ticks;         // Predicted job length for SJF
+  int priority;                // 0 is high then 2 is low
+  int quantum;                 // Amount of time for round robin
+  int ticks_in_quant;          // Tracks ticks in the quantum
+};    
+
+int get_length(int pid); // Gets lngth of jobs
 
 // Process memory is laid out contiguously, low addresses first:
 //   text

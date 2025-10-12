@@ -6,6 +6,10 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+//check if correct compilation is going on
+#ifdef SCHEDULER_SJF
+#pragma message "SJF scheduler is being compiled"
+#endif
 
 struct {
   struct spinlock lock;
@@ -19,6 +23,14 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+
+//since xv6 does not have a rand() fucntion, made a simple one
+static uint randstate = 1;
+
+uint rand(void) {
+    randstate = randstate * 1664525 + 1013904223;
+    return randstate;
+}
 
 void
 pinit(void)
@@ -88,6 +100,15 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->ticks_ran = 0;  //initialize start of ticks run to 0
+  p->priority = MED_PRIORITY;  // default medium of priority, 1
+  p->quantum = 5;   //number of ticks per quantum
+  p->ticks_in_quant = 0;  // start at 0 ticks
+
+  //check if SJF scheduler
+  #ifdef SCHEDULER_SJF
+    p->predicted_ticks = 1 + rand() % 10;  //use rand() function to randomly assign predicted job lengths
+  #endif
 
   release(&ptable.lock);
 
@@ -325,33 +346,81 @@ scheduler(void)
   struct proc *p;
   struct cpu *c = mycpu();
   c->proc = 0;
-  
+
   for(;;){
     // Enable interrupts on this processor.
     sti();
 
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
+
+#ifdef SCHEDULER_SJF
+    // Shortest Job First
+    struct proc *shortest_job = 0;
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if (p->state != RUNNABLE)
         continue;
-
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      c->proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-
-      swtch(&(c->scheduler), p->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      c->proc = 0;
+      if (!shortest_job || p->predicted_ticks < shortest_job->predicted_ticks)
+        shortest_job = p;
     }
-    release(&ptable.lock);
 
+    if (shortest_job)
+      p = shortest_job;
+    else {
+      release(&ptable.lock);
+      continue;
+    }
+
+#elif SCHEDULER_PRIORITYRR
+  //multi level priority round-robin
+  p= 0;
+  for(int pr = 0; pr < NUM_PRIORITIES; pr++){  
+        for(struct proc *q = ptable.proc; q < &ptable.proc[NPROC]; q++){
+            if(q->state == RUNNABLE && q->priority == pr){
+                p = q;
+                break;
+            }
+        }
+        if(p) break;
+    }
+    if(!p){
+        release(&ptable.lock);
+        continue;   // nothing RUNNABLE
+    }
+
+#else
+    // Default (round-robin)
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+      if (p->state == RUNNABLE)
+        break;
+    }
+
+    if (p == &ptable.proc[NPROC]) {
+      release(&ptable.lock);
+      continue;
+    }
+#endif
+
+    // Switch to chosen process
+    c->proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+
+    swtch(&(c->scheduler), p->context);
+    switchkvm();
+
+    #ifdef SCHEDULER_PRIORITYRR
+    //if multi level priority scheduler, implement quantum
+    p->ticks_in_quant++;  // increment ticks in current quantum
+    if(p->ticks_in_quant >= p->quantum){
+        p->state = RUNNABLE;
+        p->ticks_in_quant = 0;   // reset for next round
+    }
+  #endif
+
+    // Process is done running for now.
+    c->proc = 0;
+
+    release(&ptable.lock);
   }
 }
 
@@ -531,4 +600,76 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+//custom simple scheduler
+//FUNCTION ticks_running
+//looks up the process by its pid and returns its ticks so far
+//chatgpt was used to help with this function https://chatgpt.com/c/68e5abdf-2848-8332-918a-049c0da7f09e
+int 
+ticks_running(int pid)
+{
+  struct proc *p;
+
+  acquire(&ptable.lock);
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    //find from zombie processes too
+    if (p->pid == pid && p->state != UNUSED) {
+      int result = p->ticks_ran;
+      release(&ptable.lock);
+      return result;  // returns 0 if it exists but hasn’t run yet
+    }
+  }
+  release(&ptable.lock);
+  return -1; // no such process
+}
+
+//helper function for syscall sjf_length to be able to access ptable, edited ticks_running to get this
+int
+get_length(int pid) 
+{
+  struct proc *p;
+  //process table acquired to iterate over processes
+  acquire(&ptable.lock);
+  //loops through and looks for pid match and state is running or able to be run
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->pid == pid && (p->state == RUNNING || p->state == RUNNABLE)) {
+      int job_length = p->predicted_ticks;  //job/process length
+      release(&ptable.lock);
+      return job_length;
+    }
+  }
+  release(&ptable.lock); 
+  return -1;
+}
+
+//for advanced scheduler
+//set_sched_priority(priority) sets the priority of the current process
+int
+set_sched_priority(int priority) {
+    struct proc *p = myproc();
+    //if not a valid priority, return failure
+    if (priority < 0 || priority > 2) {
+      return -1;
+    }
+    acquire(&ptable.lock);
+    p->priority = priority;
+    release(&ptable.lock);
+    return 0;
+}
+
+//set_sched_priority(pid) returns the priority of the given process
+int
+get_sched_priority(int pid) {
+    struct proc *p;
+    acquire(&ptable.lock);
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+        if (p->pid == pid && p->state != UNUSED && p->state != ZOMBIE) {
+            int pr = p->priority;
+            release(&ptable.lock);
+            return pr;
+        }
+    }
+    release(&ptable.lock);
+    return -1; // if process not found or not runnable/running, return failure
 }

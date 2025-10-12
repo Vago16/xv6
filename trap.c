@@ -54,6 +54,19 @@ trap(struct trapframe *tf)
       wakeup(&ticks);
       release(&tickslock);
     }
+
+    //ADDED:increment tick count while process is running
+    struct proc *p = myproc();
+    if (p && p->state == RUNNING) {
+      p->ticks_ran++;
+      #ifdef SCHEDULER_PRIORITYRR
+      p->ticks_in_quant++;
+      if (p->ticks_in_quant >= QUANTUM) {
+        yield();
+      }
+      #endif
+    }
+
     lapiceoi();
     break;
   case T_IRQ0 + IRQ_IDE:

@@ -7,11 +7,25 @@
 char buf[1024];
 int match(char*, char*);
 
+void change_to_lowercase(char *s);
+
+
+//now supports "-i"(ignore case), "-n"(line number), "-v"(invert match)
 void
-grep(char *pattern, int fd)
+grep(char *pattern, int fd, int ignore_case, int show_line_number, int invert_match)
 {
   int n, m;
   char *p, *q;
+
+  int line_num = 1;  //for "-n" flag
+  char line_buffer[1024];
+  char pattern_buffer[128];
+
+  strcpy(pattern_buffer, pattern); //copy pattern to pattern_buffer
+  //if "-i" flag passed, lowercase it all
+  if (ignore_case) {
+    change_to_lowercase(pattern_buffer);
+  }
 
   m = 0;
   while((n = read(fd, buf+m, sizeof(buf)-m-1)) > 0){
@@ -20,12 +34,26 @@ grep(char *pattern, int fd)
     p = buf;
     while((q = strchr(p, '\n')) != 0){
       *q = 0;
-      if(match(pattern, p)){
-        *q = '\n';
-        write(1, p, q+1 - p);
+      strcpy(line_buffer, p); //copy p into line_buffer
+      //if "-i" flag passed, lowercase it all
+      if (ignore_case) {
+        change_to_lowercase(line_buffer);
+      } 
+      
+      int pattern_match = match(pattern_buffer, line_buffer); //holds if they are a match
+
+      //if "-v" flag detected, invert
+      if ((pattern_match && !invert_match) || (!pattern_match && invert_match)) {
+        //if "-n" show line numbers also
+        if (show_line_number) {
+          printf(1, "%d: ", line_num);
+        }
+        printf(1, "%s\n", p);
       }
-      p = q+1;
+      line_num++; //increment for each iteration so prints correct line
+      p = q + 1;
     }
+
     if(p == buf)
       m = 0;
     if(m > 0){
@@ -38,26 +66,41 @@ grep(char *pattern, int fd)
 int
 main(int argc, char *argv[])
 {
-  int fd, i;
-  char *pattern;
+  int fd = 0;
+  char *pattern = 0;
+  int ignore_case = 0;  //"-i" flag
+  int show_line_number = 0; //"-n" flag
+  int invert_match = 0; //"-v" flag
+  int argi = 1; //holds how many arguments are passed so multiple flags can be processed
 
-  if(argc <= 1){
+  //now supports flags
+  if(argc < 2){
     printf(2, "usage: grep pattern [file ...]\n");
     exit();
   }
-  pattern = argv[1];
 
-  if(argc <= 2){
-    grep(pattern, 0);
+  //look for flags
+  while(argi < argc && argv[argi][0] == '-') {
+    if (strchr(argv[argi], 'i')) ignore_case = 1; //flips to true
+    if (strchr(argv[argi], 'n')) show_line_number = 1;  //flips to true
+    if (strchr(argv[argi], 'v')) invert_match = 1;  //flips to true
+    argi++;  //increases to show many arguments are passed
+  }
+
+  //checks if pattern passed
+  if(argi >= argc) {
+    printf(2, "grep error: no pattern passed\n");
     exit();
   }
 
-  for(i = 2; i < argc; i++){
-    if((fd = open(argv[i], 0)) < 0){
-      printf(1, "grep: cannot open %s\n", argv[i]);
+  pattern = argv[argi++];
+  //read file
+  for(argi; argi < argc; argi++){
+    if((fd = open(argv[argi], 0)) < 0){
+      printf(1, "grep: cannot open %s\n", argv[argi]);
       exit();
     }
-    grep(pattern, fd);
+    grep(pattern, fd, ignore_case, show_line_number, invert_match); //more arguments need to be passed now
     close(fd);
   }
   exit();
@@ -105,3 +148,11 @@ int matchstar(int c, char *re, char *text)
   return 0;
 }
 
+//for "-i" flag, convert to lowercase for case-insensitive
+void change_to_lowercase(char *s) {
+  for (int i = 0; s[i]; i++) {
+    if (s[i] >= 'A' && s[i] <= 'Z') {   //uses values of ASCII characters
+      s[i] = s[i] - 'A' + 'a';    //got the solution for this from reddit https://www.reddit.com/r/C_Programming/comments/icpuvn/function_to_convert_uppercase_letters_to_lowercase/
+    }
+  }
+}

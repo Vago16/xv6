@@ -20,3 +20,8 @@
 #define SYS_link   19
 #define SYS_mkdir  20
 #define SYS_close  21
+#define SYS_hello  22   //added number for syscall hello
+#define SYS_ticks_running  23   //added number for syscall ticks_running
+#define SYS_sjf_length  24  //added number for syscall for job length in sjf
+#define SYS_set_sched_priority  25  //added number for syscall for setting the schedule priority
+#define SYS_get_sched_priority  26  //added number for syscall for getting the schedule priority

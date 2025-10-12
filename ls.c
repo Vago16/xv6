@@ -46,7 +46,7 @@ ls(char *path)
     printf(1, "%s %d %d %d\n", fmtname(path), st.type, st.ino, st.size);
     break;
 
-  case T_DIR:
+  case T_DIR:   //switch statement checking if st.type matches T_DIR(directory)
     if(strlen(path) + 1 + DIRSIZ + 1 > sizeof buf){
       printf(1, "ls: path too long\n");
       break;
@@ -57,13 +57,21 @@ ls(char *path)
     while(read(fd, &de, sizeof(de)) == sizeof(de)){
       if(de.inum == 0)
         continue;
+      //edited block
+      if (de.name[0] == '.')   //skip if file has '.' as first character in name(ie hidden file)
+        continue;
       memmove(p, de.name, DIRSIZ);
       p[DIRSIZ] = 0;
       if(stat(buf, &st) < 0){
         printf(1, "ls: cannot stat %s\n", buf);
         continue;
       }
-      printf(1, "%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+      if (st.type == T_DIR)  { //check if file being passed is a a directory; if so, add '/' to end of name
+        //did not get to work for now
+        printf(1, "%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
+      }
+      else    //else, proceed as usual
+        printf(1, "%s %d %d %d\n", fmtname(buf), st.type, st.ino, st.size);
     }
     break;
   }

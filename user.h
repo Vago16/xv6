@@ -23,6 +23,8 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int user(void);
+int hello(void);        //added syscall hello
 
 // ulib.c
 int stat(const char*, struct stat*);
@@ -37,3 +39,8 @@ void* memset(void*, int, uint);
 void* malloc(uint);
 void free(void*);
 int atoi(const char*);
+int ticks_running(int pid); //user programs can call ticks_running
+int sjf_length(int pid);    //user programs can call length of sjf jobs
+int set_sched_priority(int);    //user programs can set schedule priority
+int get_sched_priority(int);    //user programs can get schedule priority
+
