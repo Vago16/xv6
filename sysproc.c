@@ -42,6 +42,21 @@ sys_getpid(void)
   return myproc()->pid;
 }
 
+//int
+//sys_sbrk(void)
+//{
+//  int addr;
+//  int n;
+
+//  if(argint(0, &n) < 0)
+//    return -1;
+//  addr = myproc()->sz;
+//  if(growproc(n) < 0)
+//    return -1;
+//  return addr;
+//}
+
+//sys_sbrk without call to growproc()
 int
 sys_sbrk(void)
 {
@@ -50,10 +65,11 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
-  return addr;
+  
+  addr = myproc()->sz; //initialize
+  myproc()->sz += n; //ncrement the process memory size
+
+  return addr;  
 }
 
 int

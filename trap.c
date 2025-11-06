@@ -14,6 +14,59 @@ extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 
+
+//COPIED from vim.c, for mappages() to function
+// Return the address of the PTE in page table pgdir
+// that corresponds to virtual address va.  If alloc!=0,
+// create any required page table pages.
+static pte_t *
+walkpgdir(pde_t *pgdir, const void *va, int alloc)
+{
+  pde_t *pde;
+  pte_t *pgtab;
+
+  pde = &pgdir[PDX(va)];
+  if(*pde & PTE_P){
+    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+  } else {
+    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)
+      return 0;
+    // Make sure all those PTE_P bits are zero.
+    memset(pgtab, 0, PGSIZE);
+    // The permissions here are overly generous, but they can
+    // be further restricted by the permissions in the page table
+    // entries, if necessary.
+    *pde = V2P(pgtab) | PTE_P | PTE_W | PTE_U;
+  }
+  return &pgtab[PTX(va)];
+}
+
+//COPIED from vm.c
+// Create PTEs for virtual addresses starting at va that refer to
+// physical addresses starting at pa. va and size might not
+// be page-aligned.
+static int
+mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
+{
+  char *a, *last;
+  pte_t *pte;
+
+  a = (char*)PGROUNDDOWN((uint)va);
+  last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+  for(;;){
+    if((pte = walkpgdir(pgdir, a, 1)) == 0)
+      return -1;
+    if(*pte & PTE_P)
+      panic("remap");
+    *pte = pa | perm | PTE_P;
+    if(a == last)
+      break;
+    a += PGSIZE;
+    pa += PGSIZE;
+  }
+  return 0;
+}
+
 void
 tvinit(void)
 {
@@ -98,6 +151,34 @@ trap(struct trapframe *tf)
       cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
               tf->trapno, cpuid(), tf->eip, rcr2());
       panic("trap");
+    }
+    //Part 2. Implementing Lazy Page Allocation
+    {
+      uint fault_address = rcr2();    //virtual address that caused the fault
+      struct proc *p = myproc();    //gets pointer for currently running program
+
+      //if there is a pagefault while there is a current process in user space
+      if ((tf->trapno == T_PGFLT) && p && (tf->cs & 3) == DPL_USER) {
+        //no allocation of inavalid or kernel addresses
+        if (fault_address < p->sz && fault_address < KERNBASE) {
+          char *mem = kalloc();   //returns pointer to allocated phyical page
+          //if out of physical memory, go down to print statement as usual
+          if (mem == 0) {
+            //pass
+          } else {
+            //physical memory remaining
+            memset(mem, 0, PGSIZE);   //zero allocated page so it is fresh
+            //align page fault virtual address to page bounds, calls mappages 
+            if (mappages(p->pgdir, (void*)PGROUNDDOWN(fault_address), PGSIZE, V2P(mem), PTE_W|PTE_U) == 0) {
+              //valid mapping
+              return;
+            } else {
+              //if mappages() fails, free physical memory and return to error printing
+              kfree(mem);
+            }
+          } 
+        }
+      }
     }
     // In user space, assume process misbehaved.
     cprintf("pid %d %s: trap %d err %d on cpu %d "
