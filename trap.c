@@ -152,31 +152,70 @@ trap(struct trapframe *tf)
               tf->trapno, cpuid(), tf->eip, rcr2());
       panic("trap");
     }
-    //Part 2. Implementing Lazy Page Allocation
+    //Part 2. Implementing Lazy Page Allocation (Part 3. adding a choice between pure lazy and locality aware)
     {
       uint fault_address = rcr2();    //virtual address that caused the fault
       struct proc *p = myproc();    //gets pointer for currently running program
 
       //if there is a pagefault while there is a current process in user space
       if ((tf->trapno == T_PGFLT) && p && (tf->cs & 3) == DPL_USER) {
+        uint page_virt_a = PGROUNDDOWN(fault_address);    //aligns to page boundary for mapping
         //no allocation of inavalid or kernel addresses
-        if (fault_address < p->sz && fault_address < KERNBASE) {
-          char *mem = kalloc();   //returns pointer to allocated phyical page
-          //if out of physical memory, go down to print statement as usual
-          if (mem == 0) {
-            //pass
-          } else {
-            //physical memory remaining
-            memset(mem, 0, PGSIZE);   //zero allocated page so it is fresh
-            //align page fault virtual address to page bounds, calls mappages 
-            if (mappages(p->pgdir, (void*)PGROUNDDOWN(fault_address), PGSIZE, V2P(mem), PTE_W|PTE_U) == 0) {
-              //valid mapping
-              return;
-            } else {
-              //if mappages() fails, free physical memory and return to error printing
+        if (page_virt_a < p->sz && page_virt_a < KERNBASE) {
+  
+          #ifdef LOCALITY //locality-aware allocation at compile time, 3 pages at start time
+          cprintf("[LOCALITY] Page fault at 0x%x, mapping 3 pages\n", page_virt_a);   //check if in locality
+            int mapped_any = 0;
+            for (int i = 0; i < 3; i++) {
+              uint va = page_virt_a + i * PGSIZE;
+              cprintf("[LOCALITY] Mapping page at 0x%x\n", va);   //shows 3 pages being
+              //do not map beyond the logical process size
+              if (va >= p->sz)
+                break; 
+
+              //if already mapped, skip
+              pte_t *pte = walkpgdir(p->pgdir, (void*)va, 0);
+              if (pte && (*pte & PTE_P))
+                continue;
+
+              
+              char *mem = kalloc();   //returns pointer to allocated phyical page
+              //if out of physical memory
+              if (mem == 0) {
+                if (mapped_any) {
+                  return;
+                } else {
+                  break;
+                }
+              }
+                //physical memory remaining
+                memset(mem, 0, PGSIZE);   //zero allocated page so it is fresh
+                //align page fault virtual address to page bounds, calls mappages 
+                if (mappages(p->pgdir, (void*)va, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0) {
+                  //if mapping failed, free pages
+                  kfree(mem);
+                  if (mapped_any) {
+                    return;
+                  } else {
+                    break;
+                  }
+                } 
+                mapped_any = 1;
+            } 
+            if (mapped_any) {
+              return; //success of mapping a page, so process continues
+            }
+          #else   //pure-lazy allocation at compilation time
+            cprintf("[LAZY] Page fault at 0x%x, mapping single page\n", page_virt_a);   //check if lazy
+            char *mem = kalloc();
+            if (mem != 0) {
+              memset(mem, 0, PGSIZE);
+              if (mappages(p->pgdir, (void*)page_virt_a, PGSIZE, V2P(mem), PTE_W|PTE_U) == 0) {
+                return; //mapping pages successful
+              }
               kfree(mem);
             }
-          } 
+          #endif
         }
       }
     }
