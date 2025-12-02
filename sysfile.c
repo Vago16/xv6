@@ -442,3 +442,28 @@ sys_pipe(void)
   fd[1] = fd1;
   return 0;
 }
+
+int
+sys_lseek(void)
+{
+  int fd;
+  int offset;
+  struct file *f;
+
+  if (argint(0, &fd) < 0 || argint(1, &offset) < 0)
+    return -1;
+
+  if (fd < 0 || fd >= NOFILE || (f = myproc()->ofile[fd]) == 0)
+    return -1;
+
+  if(f->type != FD_INODE)
+    return -1;
+
+  //always assuming the functionality of SEEK_CUR
+  f->off += offset;
+
+  if (f->off < 0)
+    f->off = 0;
+
+  return f->off;
+}

@@ -108,6 +108,8 @@ extern int sys_ticks_running(void);
 extern int sys_sjf_length(void);
 extern int sys_set_sched_priority(void);
 extern int sys_get_sched_priority(void);
+extern int sys_lseek(void);
+
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -136,6 +138,7 @@ static int (*syscalls[])(void) = {
 [SYS_sjf_length] sys_sjf_length,  //adding in syscall for job length in sjf
 [SYS_set_sched_priority]   sys_set_sched_priority,  //adding in syscall for setting schedule priority
 [SYS_get_sched_priority]   sys_get_sched_priority,  //adding in syscall for setting schedule priority
+[SYS_lseek]    sys_lseek, //adding in syscall for lseek function
 };
 
 void

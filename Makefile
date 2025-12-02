@@ -204,7 +204,8 @@ UPROGS=\
 	_sort\
 	_ticks_running_test\
 	_simple_scheduler_test\
-	_advanced_scheduler_test
+	_advanced_scheduler_test\
+	_lseek_test
 
 fs.img: mkfs README $(UPROGS) test.txt
 	./mkfs fs.img README $(UPROGS) test.txt

@@ -124,6 +124,29 @@ filewrite(struct file *f, char *addr, int n)
   if(f->type == FD_PIPE)
     return pipewrite(f->pipe, addr, n);
   if(f->type == FD_INODE){
+    //fill holes in the file with zero if lseek sets off beyond f->ip->size
+    if(f->off > f->ip->size){
+      int diff = f->off - f->ip->size;
+      char zeros[512];
+      memset(zeros, 0, sizeof(zeros));
+
+      begin_op();
+      ilock(f->ip);
+
+      while(diff > 0){
+        int n1 = diff > sizeof(zeros) ? sizeof(zeros) : diff;
+
+        if(writei(f->ip, zeros, f->ip->size, n1) != n1){
+          iunlock(f->ip);
+          end_op();
+          return -1;
+        }
+        diff -= n1;
+      }
+      iunlock(f->ip);
+      end_op();
+    }
+
     // write a few blocks at a time to avoid exceeding
     // the maximum log transaction size, including
     // i-node, indirect block, allocation blocks,
