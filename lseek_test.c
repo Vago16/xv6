@@ -32,9 +32,9 @@ int main() {
 
   //test filling holes in the file with zero
   int fd_2 = open("hole.txt", O_CREATE | O_RDWR);
-  write(fd_2, "A", 1);      
+  write(fd_2, "A", 1);      //shown as 65  
   lseek(fd_2, 5);            
-  write(fd_2, "B", 1);          //now size = 7, with 66 showing 5 spaces offset
+  write(fd_2, "B", 1);          //now size = 7, with B shown as 66 showing 5 spaces offset
   close(fd_2);
 
   fd_2 = open("hole.txt", 0);

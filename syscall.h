@@ -26,3 +26,4 @@
 #define SYS_set_sched_priority  25  //added number for syscall for setting the schedule priority
 #define SYS_get_sched_priority  26  //added number for syscall for getting the schedule priority
 #define SYS_lseek   27  //added number for syscall for lseek(repositioninh read/write file offset)
+#define SYS_symlink 28  //added number for syscall for symbolic links

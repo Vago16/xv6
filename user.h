@@ -44,5 +44,7 @@ int sjf_length(int pid);    //user programs can call length of sjf jobs
 int set_sched_priority(int);    //user programs can set schedule priority
 int get_sched_priority(int);    //user programs can get schedule priority
 int lseek(int fd, int offset);  //user programs can call lseek
+int symlink(const char *target, const char *path);  //user programs can call symlink
+
 
 

@@ -289,11 +289,17 @@ sys_open(void)
   int fd, omode;
   struct file *f;
   struct inode *ip;
+  char buf[MAXPATH];  //added var for symlink
+  int depth = 0;  //added var for symlink
+
 
   if(argstr(0, &path) < 0 || argint(1, &omode) < 0)
     return -1;
 
   begin_op();
+
+  //debug statement
+  //cprintf("sys_open called on path: %s, omode=%d\n", path, omode);
 
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
@@ -302,16 +308,48 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
-      end_op();
-      return -1;
-    }
-    ilock(ip);
-    if(ip->type == T_DIR && omode != O_RDONLY){
-      iunlockput(ip);
-      end_op();
-      return -1;
-    }
+      if((ip = namei(path)) == 0){
+        end_op();
+        return -1;
+      }
+      ilock(ip);
+      //adding in symbolic links to follow
+      while(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)){
+        depth++;
+        if(depth > 10){   //prevent infinite loop by limiting depth
+            iunlockput(ip);
+            end_op();
+            return -1;
+        }
+
+        int n = readi(ip, buf, 0, sizeof(buf)-1); //leave space for null terminator at end
+        if(n <= 0){
+            iunlockput(ip);
+            end_op();
+            return -1;
+        }
+
+        buf[n] = 0;  //null-terminate
+        //debug statement
+        cprintf("Following symlink: depth=%d, target='%s'\n", depth, buf);
+
+        iunlockput(ip);
+
+        // get the inode of the target path
+        if((ip = namei(buf)) == 0){
+            end_op();
+            return -1;       //target does not exist
+        }
+
+        ilock(ip);
+      }
+
+      if(ip->type == T_DIR && omode != O_RDONLY){
+        iunlockput(ip);
+        end_op();
+        return -1;
+      }
+  
   }
 
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
@@ -443,6 +481,7 @@ sys_pipe(void)
   return 0;
 }
 
+//project 4 part 1
 int
 sys_lseek(void)
 {
@@ -450,9 +489,11 @@ sys_lseek(void)
   int offset;
   struct file *f;
 
+  //getting arguments
   if (argint(0, &fd) < 0 || argint(1, &offset) < 0)
     return -1;
 
+  //getting file
   if (fd < 0 || fd >= NOFILE || (f = myproc()->ofile[fd]) == 0)
     return -1;
 
@@ -466,4 +507,48 @@ sys_lseek(void)
     f->off = 0;
 
   return f->off;
+}
+
+//project 4 part 2
+int
+sys_symlink(void) {
+  char *target;
+  char *path;
+  struct inode *ip;
+  int len;
+
+  //getting arguments
+  if(argstr(0, &target) < 0 || argstr(1, &path) < 0)
+    return -1;  //failure
+
+  begin_op();
+
+  //debug statement
+  cprintf("sys_symlink called\n");
+
+  //create inode to store symbolic link
+  ip = create(path, T_SYMLINK, 0, 0);
+  if(ip == 0) {
+    end_op();
+    return -1;   //failure
+  }
+
+  ilock(ip);
+
+  //copy target path into inode data block
+  len = strlen(target) + 1;
+  if(writei(ip, target, 0, len) != len) {
+      iunlockput(ip);
+      end_op();
+      return -1;  //failure
+    }
+
+  //debug statement
+  cprintf("sys_symlink: created symlink '%s' -> '%s'\n", path, target);
+
+
+  iunlockput(ip);
+  end_op();
+
+  return 0; //success
 }
