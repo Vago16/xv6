@@ -206,7 +206,9 @@ UPROGS=\
 	_simple_scheduler_test\
 	_advanced_scheduler_test\
 	_lseek_test\
-	_symlink_test
+	_symlink_test\
+	_many_blocks\
+	_too_many_blocks
 
 fs.img: mkfs README $(UPROGS) test.txt
 	./mkfs fs.img README $(UPROGS) test.txt

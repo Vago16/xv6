@@ -73,6 +73,11 @@ main(int argc, char *argv[])
   char buf[BSIZE];
   struct dinode din;
 
+  //debug statement for dinode size after double-indirect change
+  printf("sizeof(dinode) = %ld\n", sizeof(struct dinode));
+  
+
+
 
   static_assert(sizeof(int) == 4, "Integers must be 4 bytes!");
 
